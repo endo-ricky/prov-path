@@ -21,8 +21,8 @@ const dataRoutes = require('./routes/dataRoutes');
 app.use('/api', dataRoutes);
 
 // Root endpoint
-app.get('/', (req, res) => {
-  res.json({ message: 'Express MongoDB API Server is running!' });
+app.get('/', function(req,res) {
+  res.sendFile(__dirname + '/public/index.html');
 });
 
 // Start server

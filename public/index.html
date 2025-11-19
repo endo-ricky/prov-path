@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Province Map - MEV Stack Client</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        #map { height: 500px; width: 100%; border-radius: 0.75rem; z-index: 1; }
+        .loader { border-top-color: #3498db; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+    <!-- Navbar -->
+    <nav class="bg-slate-900 text-white p-4 shadow-md">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                MEV Stack <span class="text-slate-400 font-light">| MongoDB Express Vercel</span>
+            </h1>
+            <div class="text-xs bg-blue-900 px-3 py-1 rounded-full border border-blue-700" id="status-indicator">
+                Checking API...
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left Column: Controls & Form -->
+        <div class="space-y-6">
+            
+            <!-- Data Fetch Control -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-bold mb-4 text-slate-900 border-b pb-2">API Controls</h2>
+                <p class="text-sm text-slate-500 mb-4">Connects to <code>router.get('/data')</code></p>
+                
+                <div class="flex gap-2">
+                    <button onclick="fetchAllData()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition text-sm font-medium flex justify-center items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Refresh Data
+                    </button>
+                </div>
+                
+                <div class="mt-4">
+                    <label class="text-xs font-bold text-slate-400 uppercase">Fetch by Kode (ID)</label>
+                    <div class="flex mt-1">
+                        <input type="text" id="search-kode" placeholder="e.g. 32" class="w-full border border-slate-300 rounded-l-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+                        <button onclick="fetchByKode()" class="bg-slate-800 text-white px-4 rounded-r-lg text-sm hover:bg-slate-700">GET</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Data Form -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-lg font-bold mb-4 text-slate-900 border-b pb-2">Add Province</h2>
+                <p class="text-sm text-slate-500 mb-4">Connects to <code>router.post('/data')</code></p>
+                
+                <form id="add-form" onsubmit="handlePost(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700">Kode</label>
+                        <input type="text" name="kode" required class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700">Nama</label>
+                        <input type="text" name="nama" required class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700">Ibukota</label>
+                        <input type="text" name="ibukota" required class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700">Path (Coordinates/GeoJSON)</label>
+                        <textarea name="path" rows="3" placeholder="[[lat, lng], [lat, lng], ...]" class="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono text-xs"></textarea>
+                        <p class="text-[10px] text-slate-400 mt-1">Input valid JSON array of coordinates.</p>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium transition">
+                        POST Data
+                    </button>
+                </form>
+            </div>
+
+            <!-- Response Log -->
+            <div class="bg-slate-800 p-4 rounded-xl shadow-inner h-48 overflow-y-auto font-mono text-xs text-green-400">
+                <div class="text-slate-400 mb-2 sticky top-0 bg-slate-800 pb-1 border-b border-slate-700">Console Log:</div>
+                <div id="console-output">Waiting for actions...</div>
+            </div>
+        </div>
+
+        <!-- Right Column: Map & List -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Map Container -->
+            <div class="bg-white p-1 rounded-xl shadow-lg border border-slate-200 relative">
+                 <div id="map"></div>
+                 <div id="map-loader" class="absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center hidden">
+                    <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+                    <h2 class="text-center text-slate-600 font-semibold">Fetching from DB...</h2>
+                 </div>
+            </div>
+
+            <!-- Results Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-700">Database Records</h3>
+                    <span class="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded" id="record-count">0 items</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-slate-600">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                            <tr>
+                                <th class="px-6 py-3">Kode</th>
+                                <th class="px-6 py-3">Nama</th>
+                                <th class="px-6 py-3">Ibukota</th>
+                                <th class="px-6 py-3">Path Data</th>
+                            </tr>
+                        </thead>
+                        <tbody id="data-table-body">
+                            <!-- Data inserted here via JS -->
+                            <tr>
+                                <td colspan="4" class="px-6 py-4 text-center text-slate-400 italic">No data loaded yet. Click 'Refresh Data'.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // --- CONFIGURATION ---
+        // CHANGE THIS to your actual server URL (e.g., http://localhost:3000)
+        // For this demo to work in the preview, we use a 'mock' flag.
+        const API_BASE_URL = 'https://prov-path.vercel.app/api'; // Your backend API URL
+        const USE_MOCK_DATA = true; // Set to FALSE when connecting to your real backend
+
+        // --- MOCK DATA (Simulating MongoDB) ---
+        const MOCK_DB = [
+            { 
+                kode: "31", 
+                nama: "DKI Jakarta", 
+                ibukota: "Jakarta", 
+                // Simple square path for demo
+                path: JSON.stringify([[-6.1, 106.7], [-6.1, 106.9], [-6.3, 106.9], [-6.3, 106.7]])
+            },
+            { 
+                kode: "32", 
+                nama: "West Java", 
+                ibukota: "Bandung", 
+                // Triangle path
+                path: JSON.stringify([[-6.8, 107.5], [-6.8, 107.7], [-7.0, 107.6]])
+            }
+        ];
+
+        // --- GLOBAL VARIABLES ---
+        let map;
+        let markersLayer; // Layer group to manage map items
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            log(`Ready. API set to: ${API_BASE_URL}`);
+            if(USE_MOCK_DATA) log("⚠️ MOCK MODE ENABLED (Change in source to connect to real DB)");
+        });
+
+        function initMap() {
+            // Center on Indonesia approx
+            map = L.map('map').setView([-6.2, 106.8], 8);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            markersLayer = L.layerGroup().addTo(map);
+        }
+
+        // --- API FUNCTIONS ---
+
+        // 1. GET All Data
+        async function fetchAllData() {
+            showLoader(true);
+            log("Fetching all data...");
+            
+            try {
+                let data;
+                
+                if (USE_MOCK_DATA) {
+                    // Simulate network delay
+                    await new Promise(r => setTimeout(r, 800)); 
+                    data = { success: true, count: MOCK_DB.length, data: MOCK_DB };
+                } else {
+                    const response = await fetch(`${API_BASE_URL}/data`);
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                    data = await response.json();
+                }
+
+                handleDataResponse(data);
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                alert("Failed to fetch data. Check console.");
+            } finally {
+                showLoader(false);
+            }
+        }
+
+        // 2. GET By Kode
+        async function fetchByKode() {
+            const kode = document.getElementById('search-kode').value;
+            if(!kode) return alert("Please enter a Kode");
+
+            showLoader(true);
+            log(`Fetching data for Kode: ${kode}...`);
+
+            try {
+                let data;
+                if (USE_MOCK_DATA) {
+                    const found = MOCK_DB.find(item => item.kode === kode);
+                    data = found ? { success: true, data: found } : { success: false, message: "Not found" };
+                    await new Promise(r => setTimeout(r, 500));
+                } else {
+                    // Note: Router uses /data/kode/:kode
+                    const response = await fetch(`${API_BASE_URL}/data/kode/${kode}`);
+                    data = await response.json();
+                }
+
+                if(data.success) {
+                    // Wrap single object in array for reuse of render function
+                    renderTable([data.data]);
+                    renderMap([data.data]);
+                    log(`Found: ${data.data.nama}`);
+                } else {
+                    log(`Error: ${data.message || 'Not found'}`, 'error');
+                }
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoader(false);
+            }
+        }
+
+        // 3. POST Data
+        async function handlePost(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+
+            log("Sending POST request...");
+
+            try {
+                let result;
+                if(USE_MOCK_DATA) {
+                    // Mock successful save
+                    await new Promise(r => setTimeout(r, 800));
+                    result = { success: true, message: "Mock Data created", data: payload };
+                    MOCK_DB.push(payload); // Update mock db
+                } else {
+                    const response = await fetch(`${API_BASE_URL}/data`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    result = await response.json();
+                }
+
+                if(result.success) {
+                    log(`Success: ${result.message}`);
+                    e.target.reset();
+                    fetchAllData(); // Refresh view
+                } else {
+                    log(`Failed: ${result.message}`, 'error');
+                }
+
+            } catch (error) {
+                log(`Post Error: ${error.message}`, 'error');
+            }
+        }
+
+        // --- UI HELPERS ---
+
+        function handleDataResponse(res) {
+            if (res.success) {
+                log(`Received ${res.count} records.`);
+                renderTable(res.data);
+                renderMap(res.data);
+            } else {
+                log(`Server Error: ${res.message}`, 'error');
+            }
+        }
+
+        function renderTable(items) {
+            const tbody = document.getElementById('data-table-body');
+            document.getElementById('record-count').textContent = `${items.length} items`;
+            tbody.innerHTML = '';
+
+            items.forEach(item => {
+                const row = `
+                    <tr class="bg-white border-b hover:bg-slate-50">
+                        <td class="px-6 py-4 font-medium text-slate-900">${item.kode}</td>
+                        <td class="px-6 py-4">${item.nama}</td>
+                        <td class="px-6 py-4">${item.ibukota}</td>
+                        <td class="px-6 py-4 font-mono text-xs text-slate-500 truncate max-w-[150px]">${item.path ? item.path.substring(0, 20) + '...' : 'N/A'}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        function renderMap(items) {
+            markersLayer.clearLayers(); // Clear old map items
+            
+            const bounds = [];
+
+            items.forEach(item => {
+                if (!item.path) return;
+
+                try {
+                    // PARSE LOGIC: Handles if path is stored as JSON string or object
+                    const pathData = typeof item.path === 'string' ? JSON.parse(item.path) : item.path;
+                    
+                    // Create Polygon
+                    const polygon = L.polygon(pathData, {
+                        color: 'blue',
+                        fillColor: '#3b82f6',
+                        fillOpacity: 0.5
+                    }).addTo(markersLayer);
+
+                    // Add Popup
+                    polygon.bindPopup(`
+                        <div class="font-sans p-2">
+                            <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
+                            <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
+                            <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
+                        </div>
+                    `);
+
+                    // Collect bounds to center map
+                    pathData.forEach(coord => bounds.push(coord));
+
+                } catch (err) {
+                    log(`Error parsing path for ${item.nama}: ${err}`, 'error');
+                }
+            });
+
+            // Fit map to show all items
+            if (bounds.length > 0) {
+                map.fitBounds(bounds);
+            }
+        }
+
+        function log(msg, type = 'info') {
+            const consoleOut = document.getElementById('console-output');
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'text-red-400' : 'text-green-400';
+            consoleOut.innerHTML += `<div class="${color}">[${time}] ${msg}</div>`;
+            consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+
+        function showLoader(show) {
+            const el = document.getElementById('map-loader');
+            if(show) el.classList.remove('hidden');
+            else el.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
