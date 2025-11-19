@@ -14,6 +14,8 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.error('❌ MongoDB connection error:', err));
 
+app.use(cors({ origin: '*' }));
+
 // Import routes
 const dataRoutes = require('./routes/dataRoutes');
 
