@@ -315,60 +315,123 @@
             });
         }
 
-        function renderMap(items) {
-            markersLayer.clearLayers(); // Clear old map items
-            
-            const bounds = [];
+      function renderMap(items) {
+    markersLayer.clearLayers();
+    const bounds = [];
 
-            items.forEach(item => {
-                    if (!item.path) return;
+    function collectBounds(coords) {
+        if (!Array.isArray(coords)) return;
 
-                    try {
-                        const pathData = typeof item.path === 'string' ? JSON.parse(item.path) : item.path;
-                        const kodeNum = parseInt(item.kode, 10);
-
-                        // HANYA untuk kode 92 - 96 digambar sebagai polygon
-                        if (kodeNum >= 92 && kodeNum <= 96) {
-                            const polygon = L.polygon(pathData, {
-                                color: 'blue',
-                                fillColor: '#3b82f6',
-                                fillOpacity: 0.5
-                            }).addTo(markersLayer);
-
-                            polygon.bindPopup(`
-                                <div class="font-sans p-2">
-                                    <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
-                                    <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
-                                    <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
-                                </div>
-                            `);
-
-                            pathData.forEach(coord => bounds.push(coord));
-                        } else {
-                            // selain 92 - 96 bisa dibuat marker di titik pertama path
-                            const firstCoord = pathData[0];
-                            if (firstCoord) {
-                                const marker = L.marker(firstCoord).addTo(markersLayer);
-                                marker.bindPopup(`
-                                    <div class="font-sans p-2">
-                                        <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
-                                        <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
-                                        <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
-                                    </div>
-                                `);
-                                bounds.push(firstCoord);
-                            }
-                        }
-
-                    } catch (err) {
-                        log(`Error parsing path for ${item.nama}: ${err}`, 'error');
-                    }
-                });
-
-                if (bounds.length > 0) {
-                    map.fitBounds(bounds);
-                }
+        // [lat, lng]
+        if (
+            typeof coords[0] === 'number' &&
+            typeof coords[1] === 'number' &&
+            !Number.isNaN(coords[0]) &&
+            !Number.isNaN(coords[1])
+        ) {
+            bounds.push(coords);
+        } else {
+            coords.forEach(collectBounds);
         }
+    }
+
+    // helper: GeoJSON → Leaflet layer
+    function addGeoJSON(pathData, item) {
+        const geoLayer = L.geoJSON(pathData, {
+            style: {
+                color: 'blue',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.5
+            }
+        }).addTo(markersLayer);
+
+        geoLayer.eachLayer(layer => {
+            layer.bindPopup(`
+                <div class="font-sans p-2">
+                    <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
+                    <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
+                    <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
+                </div>
+            `);
+        });
+
+        // Ambil bounds dari layer
+        const layerBounds = geoLayer.getBounds();
+        if (layerBounds.isValid()) {
+            bounds.push([layerBounds.getSouthWest().lat, layerBounds.getSouthWest().lng]);
+            bounds.push([layerBounds.getNorthEast().lat, layerBounds.getNorthEast().lng]);
+        }
+    }
+
+    // helper: konversi [lon,lat] → [lat,lon] secara rekursif
+    function convertLonLatToLatLng(coords) {
+        if (!Array.isArray(coords)) return coords;
+
+        // [lon, lat]
+        if (
+            typeof coords[0] === 'number' &&
+            typeof coords[1] === 'number'
+        ) {
+            const lon = coords[0];
+            const lat = coords[1];
+            // deteksi kasar: lon antara -180..180, lat antara -90..90
+            if (Math.abs(lon) <= 180 && Math.abs(lat) <= 90) {
+                return [lat, lon];
+            }
+            return coords; // kalau bukan koordinat, biarkan
+        }
+
+        return coords.map(convertLonLatToLatLng);
+    }
+
+    items.forEach(item => {
+        if (!item.path) return;
+
+        try {
+            let pathData =
+                typeof item.path === 'string' ? JSON.parse(item.path) : item.path;
+
+            // --- 1) Kalau ternyata full GeoJSON object ---
+            if (pathData && typeof pathData === 'object' && pathData.type) {
+                // Bisa Feature, FeatureCollection, Polygon, MultiPolygon, dll
+                addGeoJSON(pathData, item);
+                return;
+            }
+
+            // --- 2) Kalau cuma coordinates [lon, lat], convert dulu ---
+            let converted = convertLonLatToLatLng(pathData);
+
+            // Guard: pastikan array dan tidak kosong
+            if (!Array.isArray(converted) || converted.length === 0) {
+                log(`Path kosong / invalid untuk ${item.nama}`, 'error');
+                return;
+            }
+
+            const polygon = L.polygon(converted, {
+                color: 'blue',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.5
+            }).addTo(markersLayer);
+
+            polygon.bindPopup(`
+                <div class="font-sans p-2">
+                    <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
+                    <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
+                    <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
+                </div>
+            `);
+
+            collectBounds(converted);
+        } catch (err) {
+            log(`Error parsing/rendering path untuk ${item.nama}: ${err}`, 'error');
+        }
+    });
+
+    if (bounds.length > 0) {
+        map.fitBounds(bounds);
+    }
+}
+
 
         function log(msg, type = 'info') {
             const consoleOut = document.getElementById('console-output');
