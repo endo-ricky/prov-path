@@ -23,7 +23,7 @@ router.get('/data', async (req, res) => {
 // GET data by ID
 router.get('/data/:id', async (req, res) => {
   try {
-    const data = await Data.findById(req.params.id).select('kode nama ibukota path');
+    const data = await Data.findOne({ kode: req.params.id }).select('kode nama ibukota path');
     
     if (!data) {
       return res.status(404).json({
