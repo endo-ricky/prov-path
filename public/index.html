@@ -321,40 +321,53 @@
             const bounds = [];
 
             items.forEach(item => {
-                if (!item.path) return;
+                    if (!item.path) return;
 
-                try {
-                    // PARSE LOGIC: Handles if path is stored as JSON string or object
-                    const pathData = typeof item.path === 'string' ? JSON.parse(item.path) : item.path;
-                    
-                    // Create Polygon
-                    const polygon = L.polygon(pathData, {
-                        color: 'blue',
-                        fillColor: '#3b82f6',
-                        fillOpacity: 0.5
-                    }).addTo(markersLayer);
+                    try {
+                        const pathData = typeof item.path === 'string' ? JSON.parse(item.path) : item.path;
+                        const kodeNum = parseInt(item.kode, 10);
 
-                    // Add Popup
-                    polygon.bindPopup(`
-                        <div class="font-sans p-2">
-                            <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
-                            <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
-                            <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
-                        </div>
-                    `);
+                        // HANYA untuk kode 92 - 96 digambar sebagai polygon
+                        if (kodeNum >= 92 && kodeNum <= 96) {
+                            const polygon = L.polygon(pathData, {
+                                color: 'blue',
+                                fillColor: '#3b82f6',
+                                fillOpacity: 0.5
+                            }).addTo(markersLayer);
 
-                    // Collect bounds to center map
-                    pathData.forEach(coord => bounds.push(coord));
+                            polygon.bindPopup(`
+                                <div class="font-sans p-2">
+                                    <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
+                                    <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
+                                    <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
+                                </div>
+                            `);
 
-                } catch (err) {
-                    log(`Error parsing path for ${item.nama}: ${err}`, 'error');
+                            pathData.forEach(coord => bounds.push(coord));
+                        } else {
+                            // selain 92 - 96 bisa dibuat marker di titik pertama path
+                            const firstCoord = pathData[0];
+                            if (firstCoord) {
+                                const marker = L.marker(firstCoord).addTo(markersLayer);
+                                marker.bindPopup(`
+                                    <div class="font-sans p-2">
+                                        <h3 class="font-bold text-lg border-b pb-1 mb-2">${item.nama}</h3>
+                                        <p class="text-sm"><strong>Kode:</strong> ${item.kode}</p>
+                                        <p class="text-sm"><strong>Ibukota:</strong> ${item.ibukota}</p>
+                                    </div>
+                                `);
+                                bounds.push(firstCoord);
+                            }
+                        }
+
+                    } catch (err) {
+                        log(`Error parsing path for ${item.nama}: ${err}`, 'error');
+                    }
+                });
+
+                if (bounds.length > 0) {
+                    map.fitBounds(bounds);
                 }
-            });
-
-            // Fit map to show all items
-            if (bounds.length > 0) {
-                map.fitBounds(bounds);
-            }
         }
 
         function log(msg, type = 'info') {
